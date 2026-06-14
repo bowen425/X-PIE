@@ -1,0 +1,4 @@
+assign (segid ALT1 and resi 10  and name nz) (segid BLT1 and resid 48  and name nz) 10.0 6.0 11.0
+assign (segid ALT1 and resi 94  and name nz) (segid BLT1 and resid 6  and name nz) 10.0 6.0 13.0
+assign (segid ALT1 and resi 74  and name nz) (segid BLT2 and resid 6  and name nz) 10.0 6.0 13.0
+

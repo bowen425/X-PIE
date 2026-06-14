@@ -1,0 +1,6 @@
+*
+!/.gitignore
+!/Examples/
+!/Examples/**
+!/input/
+!/input/**

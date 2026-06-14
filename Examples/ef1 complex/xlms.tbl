@@ -1,0 +1,12 @@
+assign (segid ALT1 and resi 228  and name nz) (segid DLT1 and resid 450  and name nz) 10.0 6.0 14.0
+assign (segid ALT1 and resi 228  and name nz) (segid DLT1 and resid 453  and name nz) 10.0 6.0 14.0
+assign (segid ALT1 and resi 351  and name nz) (segid BLT1 and resid 176  and name nz) 10.0 6.0 14.0
+assign (segid ALT1 and resi 351  and name nz) (segid BLT1 and resid 185  and name nz) 10.0 6.0 14.0
+assign (segid ALT1 and resi 285  and name nz) (segid BLT1 and resid 133  and name nz) 10.0 6.0 14.0
+assign (segid ALT1 and resi 277  and name nz) (segid CLT1 and resid 189  and name nz) 10.0 6.0 14.0
+assign (segid ALT1 and resi 351  and name nz) (segid CLT1 and resid 232  and name nz) 10.0 6.0 14.0
+assign (segid DLT1 and resi 41  and name nz) (segid BLT1 and resid 129  and name nz) 10.0 6.0 14.0
+assign (segid DLT1 and resi 64  and name nz) (segid BLT1 and resid 129  and name nz) 10.0 6.0 14.0
+assign (segid DLT1 and resi 41  and name nz) (segid BLT1 and resid 176  and name nz) 10.0 6.0 14.0
+assign (segid DLT1 and resi 41  and name nz) (segid CLT1 and resid 232  and name nz) 10.0 6.0 14.0
+

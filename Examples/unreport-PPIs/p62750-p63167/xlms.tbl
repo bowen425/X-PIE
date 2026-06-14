@@ -1,0 +1,7 @@
+# Cross-linker length: 15.0 A
+# Format: assign (segid X and resi N and name nz) (segid Y and resid M and name nz) 10.0 6.0 11.0
+
+assign (segid ALT1 and resi 18  and name nz) (segid BLT1 and resid 5  and name nz) 10.0 6.0 11.0
+assign (segid ALT1 and resi 36  and name nz) (segid BLT1 and resid 5  and name nz) 10.0 6.0 11.0
+assign (segid ALT1 and resi 23  and name nz) (segid BLT1 and resid 5  and name nz) 10.0 6.0 11.0
+
