@@ -1,0 +1,335 @@
+================================================================================
+X-PIE: High-Confidence Crosslink Curation (x-pie-curation.py)
+================================================================================
+
+Version: 1.0
+License: MIT
+DOI: 10.5281/zenodo.20523994
+
+X-PIE curation is a computational pipeline for filtering, validating, and
+annotating pLink crosslinking mass spectrometry (XL-MS) results to produce
+high-confidence protein-protein interaction (PPI) datasets. It integrates
+external databases (STRING, UniProt, RCSB PDB) to distinguish known interactions
+from novel candidates and identify structural support for unreported PPIs.
+
+For bug reports and feature requests, please open an issue at:
+[GitHub repository URL]
+
+
+================================================================================
+TABLE OF CONTENTS
+================================================================================
+
+1. Overview
+2. Dependencies
+3. Quick Start
+4. Input Files
+5. Workflow
+6. Configuration
+7. Output Files
+8. Troubleshooting
+9. License
+
+
+================================================================================
+1. OVERVIEW
+================================================================================
+
+X-PIE curation performs automated quality control and database annotation of
+XL-MS results through the following steps:
+
+    Step 1: Load pLink search results
+    Step 2: Filter inter-protein crosslink PSMs by FDR
+    Step 3: Resolve protein pairs and crosslinked site pairs
+    Step 4: Apply site-pair count threshold
+    Step 5: Write curated XL-MS summary files
+    Step 6: Evaluate PPIs against STRING database
+    Step 7: Search homologous PDB structures for unreported PPIs
+
+The pipeline is implemented as a single Python script (x-pie-curation.py) with
+both interactive (recommended for first-time users) and non-interactive modes.
+
+
+================================================================================
+2. DEPENDENCIES
+================================================================================
+
+The script requires Python 3 and the following packages. The versions listed
+have been tested and confirmed to operate normally.
+
+| Package     | Version | Purpose                              |
+|-------------|---------|--------------------------------------|
+| pandas      | 2.3.1   | Data manipulation and CSV parsing      |
+| numpy       | 1.26.4  | Numerical operations                 |
+| requests    | 2.32.3  | HTTP requests for web APIs             |
+| biopython   | 1.85    | Sequence alignment and PDB parsing   |
+
+Check availability before running:
+
+    python x-pie-curation.py --check-deps
+
+If any packages are missing, install via pip:
+
+    pip install pandas numpy requests biopython
+
+External Web Services (internet required for Steps 6-7):
+--------------------------------------------------------
+
+| Service     | URL                              | Purpose                         |
+|-------------|----------------------------------|---------------------------------|
+| UniProt     | https://rest.uniprot.org         | Protein sequence and taxonomy   |
+| STRING      | https://string-db.org            | Protein interaction network     |
+| RCSB PDB    | https://search.rcsb.org          | Protein structure database      |
+
+At startup, the workflow checks Internet access to UniProt, STRING, and RCSB PDB.
+- If all three services are reachable, the workflow continues normally.
+- If internet access is unavailable, the program prints: `Internet connection is required for STRING and PDB annotation`
+- In interactive mode, you can then choose to:
+  - exit immediately
+  - continue with local XL-MS filtering only and skip STRING/PDB annotation
+
+
+================================================================================
+3. QUICK START
+================================================================================
+
+3.1 Prepare Input Files
+
+Place your pLink result CSV file(s) in a folder:
+
+    ./input/
+    └── plink_results.csv
+
+3.2 Run the Pipeline
+
+Interactive mode (recommended for first-time users):
+
+    python x-pie-curation.py
+
+Non-interactive mode:
+
+    python x-pie-curation.py --non-interactive --input-dir ./input --output-dir ./output
+
+3.3 Review Outputs
+
+Check the curated PPI lists in output/ and use them for downstream modeling
+with x-pie-modeling.py.
+
+
+================================================================================
+4. INPUT FILES
+================================================================================
+
+4.1 pLink Result CSV File(s)
+
+The script accepts either a single CSV file or a folder containing multiple
+pLink result CSV files.
+
+Required columns:
+
+| Column       | Description                          | Expected Values          |
+|--------------|--------------------------------------|--------------------------|
+| Peptide_Type | Peptide type code                    | 3 or "cross-link"        |
+| Protein_Type | Protein type code                    | 2 or "inter-protein"     |
+| Score        | pLink search score                   | Numeric                  |
+| Target_Decoy | Target/decoy label                   | 2 (target-target)        |
+| Q-value      | FDR q-value                          | Numeric, 0-1             |
+| Proteins     | Protein pair annotation string       | See format below         |
+
+4.2 Protein Annotation Format
+
+The Proteins column must contain entries in one of these formats:
+
+    sp|P12345|PROT1(100)-sp|P67890|PROT2(200)
+    P12345(100)-P67890(200)
+
+Where:
+- P12345, P67890 are UniProt accessions
+- 100, 200 are crosslinked residue positions (lysine NZ sites)
+
+If multiple candidate pairs are listed in one row (separated by "/"), the
+script selects the most frequent pair across the entire dataset.
+
+Important:
+Ensure your pLink export includes all required columns. Missing columns will
+cause the script to exit with an error.
+
+
+================================================================================
+5. WORKFLOW
+================================================================================
+
+Step 1: Load pLink Result Files
+-------------------------------
+Input:  pLink CSV file(s) from --input-dir
+Output: Console summary of files loaded and total row count
+
+The script reads one or more pLink result CSV files. If a folder is given,
+all CSV files are merged. Required columns are validated.
+
+Step 2: Filter Inter-Protein Crosslink PSMs
+-----------------------------------------
+Input:  Merged pLink results, --fdr threshold
+Output: Filtered target-target (TT) inter-protein PSMs
+
+Retains only crosslink PSMs (Peptide_Type == 3) that are inter-protein
+(Protein_Type == 2) with Q-value <= FDR threshold.
+
+Step 3: Resolve PPIs and XL Site Pairs
+-------------------------------------
+Input:  Filtered inter-protein PSMs
+Output: Unique XL site pairs and PPI table
+
+Parses the Proteins column to extract protein accessions and crosslinked
+residue positions. Resolves ambiguous site pairs by frequency voting. 
+
+Step 4: Apply Site-Pair Count Threshold
+---------------------------------------
+Input:  Site pairs and PPI table, --min-site-pairs
+Output: Retained high-confidence PPIs
+
+Filters PPIs by requiring at least a minimum number of unique crosslinked
+site pairs per protein pair.
+
+Step 5: Write XL-MS Summary Files
+--------------------------------
+Input:  Retained PPIs and site pairs
+Output: output/PPI.dat, output/PPI_XL_Sites.dat
+
+Writes the curated PPI list and corresponding crosslinked residue pairs.
+
+Step 6: Evaluate PPIs Against STRING
+-------------------------------------
+Input:  Retained PPIs, --string-required-score
+Output: output/Reported_PPI.dat, output/Unreported_PPI.dat
+
+Queries the STRING database for each PPI:
+- Detects species from UniProt accessions via UniProt REST API
+- Maps accessions to STRING identifiers
+- Fetches interaction network and classifies as "reported" or "unreported"
+
+Step 7: Search Homologous PDB Structures
+----------------------------------------
+Input:  Unreported PPIs, --identity-threshold
+Output: output/PDB_homology_results.dat
+
+For unreported PPIs, searches RCSB PDB for homologous structures:
+- Fetches full sequences from UniProt
+- Queries RCSB PDB for entries containing both sequences
+- Performs local pairwise alignment to calculate identity
+- Retains only pairs where both proteins exceed the identity threshold
+
+
+================================================================================
+6. CONFIGURATION
+================================================================================
+
+6.1 Command-Line Arguments
+
+| Argument                | Default   | Description                                    |
+|-------------------------|-----------|------------------------------------------------|
+| --input-dir             | ./input   | Input CSV file or folder containing pLink CSVs |
+| --output-dir            | ./output  | Output directory                               |
+| --fdr                   | 1.0       | FDR threshold (%)                              |
+| --min-site-pairs        | 1         | Minimum unique XL site pairs per PPI           |
+| --string-score-shreshold  | 0         | Minimum STRING combined score (0-1)         |
+| --identity-threshold    | 30.0      | Homologous PDB identity threshold (%)          |
+| --network-failure-mode  | False     |  Running mode when network connection is unavailable: choose to exit  |
+
+6.2 Mode Behavior
+
++------------------+---------------+------------------+
+| Invocation       | Config Source | Interactive?     |
++------------------+---------------+------------------+
+| (no args)        | Defaults      | Yes              |
+| --non-interactive| CLI arguments | No               |
++------------------+---------------+------------------+
+
+In interactive mode, the script prompts you to confirm or override each
+parameter. In non-interactive mode, all parameters are taken from CLI arguments.
+
+6.3 Example Commands
+
+Interactive mode:
+
+    python x-pie-curation.py
+
+Non-interactive mode with custom parameters:
+
+python xlms_ppi_evaluation.py --non-interactive \
+    --input-dir ./input \
+    --output-dir ./output \
+    --fdr 1 \
+    --min-site-pairs 1 \
+    --string-score-shreshold 0.7 \
+    --identity-threshold 30
+    --network-failure-mode  local-only(exit)
+
+================================================================================
+7. OUTPUT FILES
+================================================================================
+
+Directory Structure:
+--------------------
+
+    output/
+    ├── PPI.dat
+    ├── PPI_XL_Sites.dat
+    ├── Reported_PPI.dat
+    ├── Unreported_PPI.dat
+    └── PDB_homology_results.dat
+
+File Descriptions:
+------------------
+
+| File                      | Description                                      |
+|---------------------------|--------------------------------------------------|
+| PPI.dat                   | Curated protein pairs with site-pair counts      |
+| PPI_XL_Sites.dat          | Crosslinked residue pairs for each PPI           |
+| Reported_PPI.dat          | PPIs with STRING database support                |
+| Putative_PPI.dat        | Novel PPI information below the threshold, as well as PPIs not present in the STRING database                 |
+| PDB_homology_results.dat  | Homologous PDB entries for unreported PPIs       |
+
+
+================================================================================
+8. TROUBLESHOOTING
+================================================================================
+
+Problem: Missing columns error
+    Solution: Check that your pLink CSV export contains all required columns:
+              Peptide_Type, Protein_Type, Score, Target_Decoy, Q-value,
+              Proteins.
+
+Problem: No rows after filtering
+    Solution: Your FDR threshold may be too strict. Try increasing --fdr.
+              Verify that Target_Decoy == 2 (target-target) is present.
+
+Problem: No valid protein/site pairs
+    Solution: Check the Proteins column format. Expected patterns:
+              sp|ACCESSION|NAME(SITE)-sp|ACCESSION|NAME(SITE)
+              ACCESSION(SITE)-ACCESSION(SITE)
+
+Problem: STRING step fails
+    Solution: Check your internet connection. Verify that your accessions are
+              valid UniProt IDs. If most fail to map, check species detection.
+
+Problem: PDB step fails or hangs
+    Solution: This step queries external APIs and requires stable internet.
+              For large numbers of unreported PPIs, expect 10+ minutes.
+              If RCSB search fails repeatedly, try again later.
+
+Problem: Biopython alignment errors
+    Solution: Ensure biopython >= 1.85 is installed. For large sequences,
+              memory issues may occur; try processing fewer PPIs at a time.
+
+
+================================================================================
+9. LICENSE
+================================================================================
+
+X-PIE is released under the MIT License.
+See LICENSE file for details.
+
+================================================================================
+END OF README
+================================================================================

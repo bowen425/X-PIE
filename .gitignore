@@ -1,6 +1,2 @@
-*
-!/.gitignore
-!/Examples/
-!/Examples/**
-!/input/
-!/input/**
+__pycache__/
+*.pyc

@@ -1,0 +1,6 @@
+# Protein_A	Site_A	State_A	Protein_B	Site_B	State_B
+actin	328	1	cofilin	144	2
+actin	326	1	cofilin	144	2
+actin	50	1	cofilin	22	1
+actin	50	1	cofilin	127	1
+actin	61	1	cofilin	127	1

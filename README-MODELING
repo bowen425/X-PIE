@@ -1,0 +1,337 @@
+================================================================================
+X-PIE: Crosslink-Guided Protein Interaction Ensemble Modeling
+================================================================================
+
+Version: 1.0
+License: MIT
+DOI: 10.5281/zenodo.20523994
+
+X-PIE is a computational pipeline for building three-dimensional structural
+models of protein-protein complexes from crosslinking mass spectrometry (XL-MS)
+data. The method clusters crosslink sites into spatially distinct interaction
+interfaces prior to conformational sampling, enabling modeling of multiple
+binding modes between protein pairs.
+
+
+For bug reports and feature requests, please open an issue at:
+[GitHub repository URL]
+
+
+================================================================================
+TABLE OF CONTENTS
+================================================================================
+
+1. Overview
+2. Dependencies
+3. Quick Start
+4. Input Files
+5. Workflow
+6. Configuration
+7. Output Files
+8. Troubleshooting
+9. License
+
+
+================================================================================
+1. OVERVIEW
+================================================================================
+
+X-PIE performs automated structure modeling of protein complexes through the
+following steps:
+
+    Step 1: Crosslink analysis and interface clustering
+    Step 2: Generation of distance restraints and sampling scripts
+    Step 3: PDB/PSF preparation and hydrogen rebuilding
+    Step 4: Simulated annealing via XPLOR-NIH
+
+The pipeline is implemented as a single Python script (x-pie-modeling.py) that
+orchestrates the full workflow. Both interactive (recommended for first-time
+users) and batch modes are supported.
+
+
+
+================================================================================
+2. DEPENDENCIES
+================================================================================
+
+The following component versions have been tested and confirmed to operate
+normally. Other versions may work but have not been validated.
+
+Required Software:
+------------------
+
+| Software    | Version | Purpose                          | Installation          |
+|-------------|---------|----------------------------------|-----------------------|
+| Python      | 3.13.2  | Pipeline execution               | conda / python.org    |
+| Biopython   | 1.85    | PDB parsing and structure analysis | pip / conda           |
+| NumPy       | 1.26.4  | Numerical operations             | pip / conda           |
+| Matplotlib  | 3.10.3  | Schematic visualization          | pip / conda           |
+| DSSP (mkdssp)| 4.6.1  | Secondary structure assignment   | https://github.com/PDB-REDO/dssp |
+| XPLOR-NIH   | 3.10    | Structure calculation engine     | https://nmr.cit.nih.gov/xplor-nih/ |
+
+XPLOR-NIH Configuration:
+------------------------
+
+X-PIE requires access to the XPLOR binary and topology/parameter files.
+After installing XPLOR-NIH, note the following paths:
+
+    <xplor_home>/toppar/topallhdg_new.pro
+    <xplor_home>/toppar/parallhdg_new.pro
+    <xplor_home>/toppar/toph11.pep
+
+These paths will be configured in x-pie.cfg (see Section 7).
+
+
+================================================================================
+3. QUICK START
+================================================================================
+
+3.1 Prepare Input Files
+
+Place the following in your working directory:
+
+    link.dat              # Crosslink data file
+    protein_A.pdb         # PDB file for protein A
+    protein_B.pdb         # PDB file for protein B
+    [additional .pdb files for all proteins in link.dat]
+
+3.2 Generate Configuration File
+
+    python x-pie-modeling.py
+
+On first run, this creates x-pie.cfg and exits. Edit the file to set your
+XPLOR paths (see Section 7).
+
+3.3 Run the Pipeline
+
+Interactive mode (recommended for first-time users):
+
+    python x-pie-modeling.py
+
+Batch mode (fully automatic):
+
+    python x-pie-modeling.py --config x-pie.cfg
+
+3.4 Review Outputs
+
+Check the generated models in output/ and select the best structures based
+on restraint violation scores (Calc_*.pdb.viols).
+
+
+================================================================================
+4. INPUT FILES
+================================================================================
+
+4.1 Crosslink File (link.dat)
+
+Format: whitespace-separated text, one crosslink per line, four columns:
+
+    Protein_A  Residue_Number_A  Protein_B  Residue_Number_B
+
+Example:
+    actin   328   cofilin   144
+    actin   326   cofilin   144
+    actin    50   cofilin    22
+
+Requirements:
+- Protein names must match PDB filenames (case-sensitive)
+- Residue numbers must correspond to crosslinked residues
+- Each protein in link.dat must have a corresponding <protein_name>.pdb
+- If the crosslinked residue is not lysine (lacking an NZ atom), for example when the crosslink occurs at the protein N-terminus, the program automatically uses the backbone N atom of the corresponding crosslinked residue as the target for computational analysis.
+
+4.2 PDB Files
+
+- One PDB file per protein named exactly as in link.dat
+- Crosslinked residues must contain complete side chains with NZ atoms
+- Missing residues at non-crosslinked sites are acceptable
+
+Important:
+Since sampling is performed in all-atom mode with NZ atom distances as
+restraints by default, please ensure that crosslinked residues have complete
+side chains in the initial PDB structures before running X-PIE. Missing
+residues at non-crosslinked sites do not affect the calculation.
+
+
+================================================================================
+5. WORKFLOW
+================================================================================
+
+Step 1: Crosslink Analysis
+--------------------------
+Input:  link.dat, *.pdb
+Output: interface-define/
+
+The script partitions each protein into structural domains, identifies
+disordered linker regions, and clusters crosslink sites into spatially
+distinct interaction interfaces. A schematic diagram is generated for visual
+inspection.
+
+Files generated:
+    <protein>_domains.txt     Domain residue ranges
+    <protein>_linker.txt      Long disordered/linker regions
+    <protein>_loop.txt        Short flexible loops (if enabled)
+    <A>_<B>_clusters.txt      Crosslink interface clusters
+    <A>_<B>_schematic.png     Visualization diagram
+
+In interactive mode, the pipeline pauses after this step for manual review.
+Edit any of the above files if needed before continuing.
+
+Step 2: Input File Generation
+-----------------------------
+Input:  interface-define/*
+Output: input/xlms.tbl, refine.py
+
+Generates distance restraints (xlms.tbl) and the XPLOR control script
+(refine.py) that drives structure calculation.
+
+In interactive mode, the pipeline pauses for review of xlms.tbl and refine.py.
+
+Step 3: PDB/PSF Preparation
+---------------------------
+Input:  *.pdb (from pdb_dir)
+Output: input/*-prepare.pdb, input/*-prepare.psf
+
+Cleans PDB files, generates PSF topology files, rebuilds hydrogen atoms,
+and performs short energy minimization. This step runs XPLOR twice per
+protein and may take several minutes.
+
+Step 4: Conformational Sampling
+-------------------------------
+Command: xplor -py refine.py -smp <num_cores>
+
+Input:  refine.py, input/*
+Output: output/Calc_*.pdb, output/Calc_*.pdb.viols
+
+Runs simulated annealing to generate structural models satisfying the
+crosslink distance restraints while respecting domain rigid-body constraints.
+
+In the scripts/ folder, we provide the `analyze_structures.py` script for structural analysis. 
+After inputting the path to the structures, the number of structures to be analyzed, and reference PDB structure information (if available), the script automatically calculates the total energy of these structures and ranks them. 
+It selects structures with the lowest energy and no significant atomic clashes, and computes RMSD values reflecting structural convergence. 
+If a reference structure is provided, the script also calculates the RMSD values of these structures relative to the reference structure.
+
+================================================================================
+6. CONFIGURATION
+================================================================================
+
+6.1 Config File (x-pie.cfg)
+
+The program reads x-pie.cfg by default (override with --config <file>).
+
+Sections:
+
+[data]
+    link_file = path to crosslink file        (default: link.dat)
+    pdb_dir   = directory containing PDBs     (default: ./)
+
+[paths]
+    xplor_home = path to XPLOR toppar/ directory  [REQUIRED]
+    xplor_bin  = path to XPLOR executable         [REQUIRED]
+
+[parameters]
+    linker_length        = crosslinker arm length (Å)      (default: 15)
+    num_structures       = number of models to generate    (default: 24)
+    num_cores            = CPU cores for XPLOR sampling    (default: 8)
+    use_loop_flexibility = enable flexible loop handling   (default: false)
+
+[workflow]
+    interactive            = prompt for confirmation       (default: true)
+    pause_after_analysis   = pause after Step 1            (default: true)
+    pause_after_generate   = pause after Step 2            (default: true)
+    auto_run_sampling      = launch XPLOR automatically    (default: false)
+    edit_timeout_seconds   = auto-continue timeout (s)     (default: 0)
+
+6.2 Mode Behavior
+
++------------------+---------------+----------------+------------------+
+| Invocation       | Config Source | Interactive?   | Auto-run XPLOR?  |
++------------------+---------------+----------------+------------------+
+| (no args)        | x-pie.cfg     | Always YES     | Prompts user     |
+| --config x-pie.cfg| x-pie.cfg    | Per config     | Per config       |
++------------------+---------------+----------------+------------------+
+
+Note: Without --config, interactive mode is always enabled regardless of
+the interactive setting in x-pie.cfg.
+
+6.3 Generate Default Config
+
+    python x-pie-modeling.py --generate-config
+
+
+================================================================================
+7. OUTPUT FILES
+================================================================================
+
+Directory Structure:
+--------------------
+
+    working_directory/
+    ├── x-pie.cfg
+    ├── interface-define/
+    │   ├── *_domains.txt
+    │   ├── *_linker.txt
+    │   ├── *_clusters.txt
+    │   └── *_schematic.png
+    ├── input/
+    │   ├── xlms.tbl
+    │   ├── refine.py
+    │   ├── *.pdb
+    │   ├── *.psf
+    │   └── *-prepare.{pdb,psf}
+    └── output/
+        ├── Calc_*.pdb
+        └── Calc_*.pdb.viols
+
+File Descriptions:
+------------------
+
+| File                    | Description                              |
+|-------------------------|------------------------------------------|
+| *_domains.txt           | Domain boundary definitions              |
+| *_linker.txt            | Long disordered region definitions       |
+| *_clusters.txt          | Interface state assignments              |
+| *_schematic.png         | Crosslink-domain visualization           |
+| xlms.tbl                | Distance restraints for XPLOR            |
+| refine.py               | XPLOR sampling control script            |
+| *-prepare.pdb/psf       | Cleaned structures with rebuilt H atoms  |
+| Calc_*.pdb              | Generated structural models              |
+| Calc_*.pdb.viols        | Per-model restraint violation reports    |
+
+The Example folder contains the input and output files for all systems described in the manuscript.
+================================================================================
+8. TROUBLESHOOTING
+================================================================================
+
+Problem: Missing PDB files
+    Solution: Ensure every protein name in link.dat has a matching <name>.pdb.
+
+Problem: DSSP (mkdssp) not found
+    Solution: Install mkdssp and verify it is in your PATH.
+
+Problem: XPLOR not found
+    Solution: Set correct paths in x-pie.cfg or ensure xplor is in your PATH.
+
+Problem: PSF generation fails
+    Solution: Check that PDB files use standard atom and residue names.
+              AlphaFold models usually work without modification.
+
+Problem: Empty or single-state clusters
+    Solution: With very few crosslinks, only one interface state may be found.
+              This is expected behavior. Verify that NZ atoms exist at the
+              specified residue numbers.
+
+Problem: Crosslinked residues lack side chains
+    Solution: Rebuild missing side chains using tools such as PDBFixer or
+              manual modeling before running X-PIE.
+
+
+================================================================================
+10. LICENSE
+================================================================================
+
+X-PIE is released under the MIT License.
+See LICENSE file for details.
+
+================================================================================
+END OF README
+================================================================================
